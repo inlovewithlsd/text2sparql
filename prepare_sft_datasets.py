@@ -3,7 +3,7 @@ import json
 import os
 from tqdm import tqdm
 from transformers import AutoTokenizer
-from utils import preprocess_sparql, mask_query
+from utils import preprocess_sparql, mask_query, add_extra_relations, add_extra_entities, load_wikidata_entities, load_wikidata_relations
 
 # Global instructions dictionary.
 INSTRUCTIONS = {
@@ -30,6 +30,10 @@ def create_prompt(question, entities_string, predicates_string, valid_triplets=N
 def format_dataset(dataset, tokenizer, mode='train', lang='en'):
     sft_examples_list, failed_samples = [], []
     instruction = INSTRUCTIONS[lang]
+
+    entities_lookup = load_wikidata_entities()
+    relations_lookup = load_wikidata_relations()
+
     for sample in tqdm(dataset, desc="Formatting dataset"):
         question = sample.get(f'{lang}_question', "").strip()
         if not question:
@@ -40,13 +44,13 @@ def format_dataset(dataset, tokenizer, mode='train', lang='en'):
         entity_map = sample.get('entities', {}).get('question') or sample.get('entities', {}).get('query') or {}
         relation_map = sample.get('relations', {}).get('question') or sample.get('relations', {}).get('query') or {}
 
-        entities_string = format_entities(entity_map)
-        predicates_string = format_predicates(relation_map)
+        entities_string = format_entities(add_extra_entities(entity_map, entities_lookup))
+        predicates_string = format_predicates(add_extra_relations(relation_map, relations_lookup))
 
         user_task = create_prompt(question, entities_string, predicates_string)
 
         sparql = preprocess_sparql(sample.get('query', ""))
-        sparql = mask_query(sparql)
+        # sparql = mask_query(sparql)
         target = f"```\n{sparql}\n```"
 
         if not entities_string.strip() or not target:

@@ -1,4 +1,5 @@
 import re
+import json
 import random
 
 def is_schema_token(token, prefixes):
@@ -131,6 +132,106 @@ def mask_query(query):
 
     return masked_query
 
+
+def load_wikidata_entities(entities_file='wikidata_entities.json'):
+    with open(entities_file, 'r', encoding='utf-8') as f:
+        entities_list = json.load(f)
+    return {entity["id"]: entity for entity in entities_list if "id" in entity}
+
+def load_wikidata_relations(relations_file='wikidata_relations_info.json'):
+    with open(relations_file, 'r', encoding='utf-8') as f:
+        relations = json.load(f)
+    return relations
+
+def get_candidate_label_for_entity(candidate_id, gold_label, all_entities):
+    record = all_entities.get(candidate_id)
+    if record:
+        aliases = record.get("aliases")
+        if isinstance(aliases, list) and aliases:
+            return random.choice(aliases)
+        elif isinstance(aliases, str) and aliases.strip():
+            return aliases.strip()
+        elif record.get("label"):
+            return record["label"]
+    return random.choice([gold_label, gold_label[:-random.randint(1, max(len(gold_label)-3, 2))], gold_label + ' (alt)'])
+
+def get_candidate_label_for_relation(candidate_id, gold_label, all_relations):
+    record = all_relations.get(candidate_id)
+    if record:
+        aliases = record.get("aliases", [])
+        if aliases:
+            return random.choice(aliases)
+        elif record.get("label"):
+            return record["label"]
+    # Fallback to gold label with an alternative marker.
+    return random.choice([gold_label, gold_label[:-random.randint(1, max(len(gold_label)-3, 2))], gold_label + ' (alt)'])
+
+def add_extra_entities(entities, all_entities):
+    n_extra = random.randint(0, 3)
+    extra_entities = {}
+    gold_ids = list(entities.keys())
+    for _ in range(n_extra):
+        if not gold_ids:
+            break
+        gold_id = random.choice(gold_ids)
+        gold_label = entities[gold_id].get("en", "unknown")
+        match = re.match(r'Q(\d+)$', gold_id)
+        if not match:
+            continue
+        num = int(match.group(1))
+        possible_offsets = [-3, -2, -1, 1, 2, 3]
+        random.shuffle(possible_offsets)
+        new_id = None
+        for offset in possible_offsets:
+            new_num = num + offset
+            if new_num <= 0:
+                continue
+            candidate_id = f"Q{new_num}"
+            if candidate_id not in entities and candidate_id not in extra_entities:
+                new_id = candidate_id
+                break
+        if new_id is None:
+            continue
+        # Look up candidate label from external wikidata_entities
+        new_label = get_candidate_label_for_entity(new_id, gold_label, all_entities)
+        extra_entities[new_id] = {"en": new_label}
+    merged = entities.copy()
+    merged.update(extra_entities)
+    return merged
+
+def add_extra_relations(relations, all_relations):
+    n_extra = random.randint(0, 3)
+    extra_relations = {}
+    gold_ids = list(relations.keys())
+    for _ in range(n_extra):
+        if not gold_ids:
+            break
+        gold_id = random.choice(gold_ids)
+        gold_label = relations[gold_id].get("en", "unknown")
+        match = re.match(r'P(\d+)$', gold_id)
+        if not match:
+            continue
+        num = int(match.group(1))
+        possible_offsets = [-3, -2, -1, 1, 2, 3]
+        random.shuffle(possible_offsets)
+        new_id = None
+        for offset in possible_offsets:
+            new_num = num + offset
+            if new_num <= 0:
+                continue
+            candidate_id = f"P{new_num}"
+            if candidate_id not in relations and candidate_id not in extra_relations:
+                new_id = candidate_id
+                break
+        if new_id is None:
+            continue
+        # Look up candidate label from external wikidata_relations
+        new_label = get_candidate_label_for_relation(new_id, gold_label, all_relations)
+        extra_relations[new_id] = {"en": new_label}
+    merged = relations.copy()
+    merged.update(extra_relations)
+    return merged
+
 def validate_corruptions(sparql):
     print('Original sparql:', sparql, end='\n\n')
     print("remove_token", corrupt_sparql(sparql))
@@ -141,6 +242,15 @@ def validate_corruptions(sparql):
 
 
 if __name__ == "__main__":
-    example_sparql = "select ?answer where { wd:Q8070 wdt:P828 ?answer }"
-    preprocessed_sparql = preprocess_sparql(example_sparql)
-    validate_corruptions(preprocessed_sparql)
+    # example_sparql = "select ?answer where { wd:Q8070 wdt:P828 ?answer }"
+    # preprocessed_sparql = preprocess_sparql(example_sparql)
+    # validate_corruptions(preprocessed_sparql)
+    entities_lookup = load_wikidata_entities()
+    relations_lookup = load_wikidata_relations()
+    a = {
+                    "Q8070": {
+                        "en": "tsunami",
+                        "ru": "цунами"
+                    }
+                }
+    print(add_extra_entities(a, entities_lookup))
