@@ -3,12 +3,12 @@ import json
 import os
 from tqdm import tqdm
 from transformers import AutoTokenizer
-from utils import preprocess_sparql
+from utils import preprocess_sparql, mask_query
 
 # Global instructions dictionary.
 INSTRUCTIONS = {
     'en': """You are an expert SPARQL query generator for Wikidata. Your task is to transform natural language questions into correct and efficient SPARQL queries, ensuring precise alignment with the question, the provided entities, relations, and valid triplets.You are given valid Wikidata triplets constructed from the provided entities and relations. These triplets follow the correct syntax and use the proper prefixes. Provided vlaid triplets are based solely on the given information; if the query requires connections or entities not explicitly provided, generate new triplets accordingly while maintaining valid Wikidata syntax.
-            Ensure proper structure and syntax of SPARQL query. Optimize queries for performance, applying filters, counts, and conditions when necessary. Output only the complete SPARQL query with correct formatting, without explanations or extra text. Handle missing entities, ambiguous cases, and complex queries logically.
+            Ensure proper structure and syntax of SPARQL query. Optimize queries for performance, applying filters, counts, and conditions when necessary. Output only the complete SPARQL query with correct formatting, without explanations or extra text. Handle missing entities, ambiguous cases, and complex queries logically. When multiple entities or relations are provided, select the one that best aligns with the question context and generate a query that includes only that selection.
             Ensure the syntax correctness of generated SPARQL query. Double-check that queries have correctly closed parentheses and braces.
         """
 }
@@ -46,6 +46,7 @@ def format_dataset(dataset, tokenizer, mode='train', lang='en'):
         user_task = create_prompt(question, entities_string, predicates_string)
 
         sparql = preprocess_sparql(sample.get('query', ""))
+        sparql = mask_query(sparql)
         target = f"```\n{sparql}\n```"
 
         if not entities_string.strip() or not target:

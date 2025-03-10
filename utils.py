@@ -102,6 +102,35 @@ def augment_sparql(sparql):
     else:
         return sparql
 
+
+def mask_query(query):
+    entity_mapping = {}
+    relation_mapping = {}
+    entity_count = 0
+    relation_count = 0
+
+    # Function to replace an entity match with a masked token.
+    def replace_entity(match):
+        nonlocal entity_count
+        entity = match.group(0)
+        if entity not in entity_mapping:
+            entity_mapping[entity] = f"<entity_{entity_count}>"
+            entity_count += 1
+        return entity_mapping[entity]
+
+    def replace_relation(match):
+        nonlocal relation_count
+        relation = match.group(0)
+        if relation not in relation_mapping:
+            relation_mapping[relation] = f"<relation_{relation_count}>"
+            relation_count += 1
+        return relation_mapping[relation]
+
+    masked_query = re.sub(r'Q\d+', replace_entity, query)
+    masked_query = re.sub(r'P\d+', replace_relation, masked_query)
+
+    return masked_query
+
 def validate_corruptions(sparql):
     print('Original sparql:', sparql, end='\n\n')
     print("remove_token", corrupt_sparql(sparql))

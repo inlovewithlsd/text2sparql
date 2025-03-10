@@ -45,6 +45,9 @@ def main():
     # 1. Initialize model and tokenizer.
     model = AutoModelForCausalLM.from_pretrained(args.pretrained_model)
     tokenizer = AutoTokenizer.from_pretrained(args.pretrained_model)
+    new_tokens = [f'<entity_{i}>' for i in range(10)] + [f'<relation_{i}>' for i in range(10)]
+    tokenizer.add_tokens(new_tokens)
+    model.resize_token_embeddings(len(tokenizer))
 
     # Move model to CUDA if available.
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

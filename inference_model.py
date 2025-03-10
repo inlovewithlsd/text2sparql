@@ -36,9 +36,8 @@ def validate(model, tokenizer, val_dataset, batch_size=8):
                 num_beams=2,
                 do_sample=True,
                 temperature=0.3,
-                pad_token_id=tokenizer.pad_token_id,
+                pad_token_id=tokenizer.eos_token_id,
                 eos_token_id=tokenizer.eos_token_id,
-                no_repeat_ngram_size=3
             )
             outputs = outputs.cpu()
             # Assume the prompt length equals the input_ids sequence length.
@@ -84,9 +83,9 @@ def main():
         torch_dtype=torch.float16,
         device_map="auto"
     )
+    model.to(device)
     tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
-    tokenizer.pad_token = tokenizer.eos_token
-    tokenizer.padding_side = "right"
+    tokenizer.padding_side = "left"
 
     # Create inference dataset.
     val_dataset = SFTFinetuneDataset(args.input_file, tokenizer, mode="test", max_length=args.max_length)
