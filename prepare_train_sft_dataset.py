@@ -1,82 +1,91 @@
 import argparse
 import json
+import random
 import os
 from tqdm import tqdm
 from transformers import AutoTokenizer
-from nutils import INSTRUCTION, preprocess_sparql, create_prompt, load_wikidata_entities, load_wikidata_relations, format_gold_qid, add_extra_entities, add_extra_relations
+from nutils import INSTRUCTION, preprocess_sparql, create_prompt, format_qid, format_gold_qid, add_extra_entities
 
-def format_dataset(dataset, tokenizer, entities_file, relations_file, mode='e2e', phase='train', lang='en'):
+def format_dataset(dataset, tokenizer, entities_file, relations_file, augment_prob=0.5, mode='e2e', phase='train', lang='en'):
     sft_examples_list, failed_samples = [], []
     instruction = INSTRUCTION
 
-    wikidata_entities = load_wikidata_entities(entities_file)
-    wikidata_relations = load_wikidata_relations(relations_file)
+    top5entities = json.load(open(entities_file))
+    top5relations = json.load(open(relations_file))
+    weights = [1-augment_prob, augment_prob/2, augment_prob/2]
 
     for sample in tqdm(dataset, desc="Formatting dataset"):
-        question = sample.get(f'{lang}_question', "").strip()
-        if not question:
-            failed_samples.append(sample)
-            continue
-
-        # Get entities and relations from the sample.
-        entity_map = sample.get('entities', {}).get('question') or sample.get('entities', {}).get('query') or {}
-        relation_map = sample.get('relations', {}).get('question') or sample.get('relations', {}).get('query') or {}
-
-        if mode == 'e2e':
-            entities_string = format_gold_qid(add_extra_entities(entity_map, wikidata_entities))
-            predicates_string = format_gold_qid(add_extra_relations(relation_map, wikidata_relations))
-        else:
-            entities_string = format_gold_qid(entity_map)
-            predicates_string = format_gold_qid(relation_map)
-
-        user_task = create_prompt(question, entities_string, predicates_string)
-
-        query = preprocess_sparql(sample.get('query', ""))
-        multi_hop_query = preprocess_sparql(sample.get('multi_hop_query')) if sample.get('multi_hop_query') is not None else None
-
-        intermediate_entities = sample.get('intermediate_entities', [])
-        intermediate_entities = [] if not intermediate_entities else intermediate_entities
-
-        if multi_hop_query:
-            replacements_made = False
-            for entity in intermediate_entities:
-                if f"wd:{entity}" in multi_hop_query:
-                    multi_hop_query = multi_hop_query.replace(f"wd:{entity}", "<|mask|>")
-                    replacements_made = True
-
-            if replacements_made:
-                target = f'multi-hop ```{query}``` <|sep|> ```{multi_hop_query}```'
-                sparql = sample.get('multi_hop_query')
-            else:
-                target = f'single-hop ```{multi_hop_query}```'
-                sparql = sample.get('multi_hop_query')
-        else:
-            target = f'single-hop ```{query}```'
-            sparql = sample.get('query')
-
-        if not entities_string.strip() or not query:
-            failed_samples.append(sample)
-            continue
-
-        if not entities_string.strip() or not target:
-            failed_samples.append(sample)
-            continue
-
         if phase == 'train':
-            chat = [
-                {"role": "system", "content": instruction},
-                {"role": "user", "content": user_task},
-                {"role": "assistant", "content": target}
-            ]
-            formatted_prompt = tokenizer.apply_chat_template(chat, tokenize=False, add_generation_prompt=False)
+            number_of_augmentations = random.choices([1, 2, 3],weights=weights, k=1)[0]
         else:
-            chat = [
-                {"role": "system", "content": instruction},
-                {"role": "user", "content": user_task}
-            ]
-            formatted_prompt = tokenizer.apply_chat_template(chat, tokenize=False, add_generation_prompt=True)
+            number_of_augmentations = 1
 
-        sft_examples_list.append({"id": str(sample.get("id")), "sft": formatted_prompt, "sparql": sparql})
+        for augmentation in range(number_of_augmentations):
+            question = sample.get(f'{lang}_question', "").strip()
+            if not question:
+                failed_samples.append(sample)
+                continue
+
+            # Get entities and relations from the sample.
+            entity_map = sample.get('entities', {}).get('question') or sample.get('entities', {}).get('query') or {}
+            relation_map = sample.get('relations', {}).get('question') or sample.get('relations', {}).get('query') or {}
+
+            if mode == 'e2e':
+                entities_string = format_qid(add_extra_entities(entity_map, top5entities, n=random.randint(1,3)))
+                predicates_string = format_qid(add_extra_entities(relation_map, top5relations, n=random.randint(1,3)))
+            else:
+                entities_string = format_gold_qid(entity_map)
+                predicates_string = format_gold_qid(relation_map)
+
+            user_task = create_prompt(question, entities_string, predicates_string)
+
+            query = preprocess_sparql(sample.get('query', ""))
+            multi_hop_query = preprocess_sparql(sample.get('multi_hop_query')) if sample.get('multi_hop_query') is not None else None
+
+            intermediate_entities = sample.get('intermediate_entities', [])
+            intermediate_entities = [] if not intermediate_entities else intermediate_entities
+
+            if multi_hop_query:
+                replacements_made = False
+                for entity in intermediate_entities:
+                    if f"wd:{entity}" in multi_hop_query:
+                        multi_hop_query = multi_hop_query.replace(f"wd:{entity}", "<|mask|>")
+                        replacements_made = True
+
+                if replacements_made:
+                    target = f'multi-hop ```{query}``` <|sep|> ```{multi_hop_query}```'
+                    sparql = sample.get('multi_hop_query')
+                else:
+                    target = f'single-hop ```{multi_hop_query}```'
+                    sparql = sample.get('multi_hop_query')
+            else:
+                target = f'single-hop ```{query}```'
+                sparql = sample.get('query')
+
+            if not entities_string.strip() or not query:
+                failed_samples.append(sample)
+                continue
+
+            if not entities_string.strip() or not target:
+                failed_samples.append(sample)
+                continue
+
+            if phase == 'train':
+                chat = [
+                    {"role": "system", "content": instruction},
+                    {"role": "user", "content": user_task},
+                    {"role": "assistant", "content": target}
+                ]
+                formatted_prompt = tokenizer.apply_chat_template(chat, tokenize=False, add_generation_prompt=False)
+            else:
+                chat = [
+                    {"role": "system", "content": instruction},
+                    {"role": "user", "content": user_task}
+                ]
+                formatted_prompt = tokenizer.apply_chat_template(chat, tokenize=False, add_generation_prompt=True)
+
+            sft_examples_list.append({"id": str(sample.get("id")), "sft": formatted_prompt, "sparql": sparql})
+
     return sft_examples_list, failed_samples
 
 def main():

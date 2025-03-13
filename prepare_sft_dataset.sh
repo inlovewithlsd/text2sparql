@@ -1,8 +1,8 @@
 python prepare_train_sft_dataset.py \
   --train_file "data/datasets/pat/pat_train.json" \
   --test_file "data/datasets/pat/pat_test.json" \
-  --entities_file "data/wikidata_files/wikidata_entities.json" \
-  --relations_file "data/wikidata_files/wikidata_relations.json" \
+  --entities_file "data/wikidata_files/top5_entities_candidates.json" \
+  --relations_file "data/wikidata_files/top5_relations_candidates.json" \
   --mode "e2e" \
   --output_dir "data/sft" \
   --dataset_name "pat" \
