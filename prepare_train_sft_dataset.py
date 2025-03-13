@@ -99,6 +99,7 @@ def main():
     parser.add_argument("--output_dir", type=str, required=True, help="Directory to save the SFT datasets")
     parser.add_argument("--dataset_name", type=str, required=True, help="Dataset name to use as output file prefix")
     parser.add_argument("--lang", type=str, default="en", help="Language (default: en)")
+    parser.add_argument("--aug_size", type=float, default=0.5, help="Proportion of augmented samples")
     args = parser.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
@@ -108,14 +109,14 @@ def main():
 
     # Process train dataset.
     train_data = json.load(open(args.train_file, "r", encoding="utf-8"))["dataset"]
-    train_examples, train_failed = format_dataset(train_data, tokenizer, args.entities_file, args.relations_file, mode=args.mode, phase="train", lang=args.lang)
+    train_examples, train_failed = format_dataset(train_data, tokenizer, args.entities_file, args.relations_file, augment_prob=args.aug_size, mode=args.mode, phase="train", lang=args.lang)
     train_out_path = os.path.join(args.output_dir, f"{args.dataset_name}_train.json")
     with open(train_out_path, "w", encoding="utf-8") as f:
         json.dump(train_examples, f, ensure_ascii=False, indent=4)
 
     # Process test dataset.
     test_data = json.load(open(args.test_file, "r", encoding="utf-8"))["dataset"]
-    test_examples, test_failed = format_dataset(test_data, tokenizer, args.entities_file, args.relations_file, mode=args.mode, phase="test", lang=args.lang)
+    test_examples, test_failed = format_dataset(test_data, tokenizer, args.entities_file, args.relations_file, augment_prob=0, mode=args.mode, phase="test", lang=args.lang)
     test_out_path = os.path.join(args.output_dir, f"{args.dataset_name}_test.json")
     with open(test_out_path, "w", encoding="utf-8") as f:
         json.dump(test_examples, f, ensure_ascii=False, indent=4)

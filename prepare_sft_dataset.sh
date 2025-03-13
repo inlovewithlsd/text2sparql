@@ -7,4 +7,5 @@ python prepare_train_sft_dataset.py \
   --output_dir "data/sft" \
   --dataset_name "pat" \
   --tokenizer_path "Qwen/Qwen2.5-Coder-0.5B-Instruct" \
-  --lang "en"
+  --lang "en" \
+  --aug_size 0.5

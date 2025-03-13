@@ -71,7 +71,7 @@ def predict_sparql_queries(model, tokenizer, dataset, batch_size=32):
             prompt_length = input_ids.shape[1]
             decoded_outputs = tokenizer.batch_decode(
                 outputs[:, prompt_length:],
-                skip_special_tokens=True,
+                skip_special_tokens=False,
                 clean_up_tokenization_spaces=False
             )
 
